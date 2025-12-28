@@ -263,43 +263,31 @@ app.post("/process-task", (req, res) => {
     return res.status(400).json({ error: "Missing videoPath or task in body" });
   }
 
-  console.log("Processing task:", task.id);
-  console.log("Time range:", task.startTime, "-", task.endTime);
+  const outputDir = join(__dirname, "outputs");
+  if (!existsSync(outputDir)) {
+    mkdirSync(outputDir, { recursive: true });
+  }
 
-  // Build filter string for this task
+  const timestamp = Date.now();
+  const outputPath = join(
+    outputDir,
+    `output_${task.id.slice(-4)}_${timestamp}.mp4`
+  );
+
   const filterString = buildFilterString(task.filters);
   const filterArg = filterString ? `-vf "${filterString}"` : "";
 
-  // Calculate output path
-  const outputFile = `output_${task.id}.mp4`;
-  const outputPath = join(__dirname, "outputs", outputFile);
-
-  // Ensure outputs directory exists
-  const outputsDir = join(__dirname, "outputs");
-  if (!existsSync(outputsDir)) {
-    mkdirSync(outputsDir, { recursive: true });
-  }
-
-  // FFmpeg command for this task
+  // FFmpeg command for the segment
   const cmd = `ffmpeg -ss ${task.startTime} -to ${task.endTime} -i "${videoPath}" ${filterArg} -preset medium -crf 23 -y "${outputPath}"`;
 
   console.log("FFmpeg command:", cmd);
 
   try {
     execSync(cmd, { stdio: "inherit" });
-    console.log("Task completed:", task.id);
-    console.log("Output file:", outputPath);
-
-    res.json({
-      success: true,
-      outputPath,
-    });
+    res.json({ success: true, outputPath });
   } catch (error) {
-    console.error("Error processing task:", error);
-    console.error("Error message:", error.message);
-    res
-      .status(500)
-      .json({ error: "Failed to process task", message: error.message });
+    console.error("FFmpeg error:", error);
+    res.status(500).json({ error: "FFmpeg process failed" });
   }
 });
 
@@ -326,19 +314,14 @@ app.post("/process-tasks", (req, res) => {
     mkdirSync(outputDir, { recursive: true });
   }
 
-  const finalOutputPath = join(outputDir, "merged_video.mp4");
+  const timestamp = Date.now();
+  const finalOutputPath = join(outputDir, `merged_video_${timestamp}.mp4`);
+  const segmentFiles = [];
 
   try {
-    const segmentFiles = [];
-
     // Process each task
     for (const task of tasks) {
-      if (glueOnly) {
-        if (!task.outputPath) {
-          throw new Error(
-            `Task ${task.id} has no outputPath for glueOnly mode`
-          );
-        }
+      if (glueOnly && task.outputPath) {
         // In glueOnly mode, task.outputPath is already the absolute path to the generated segment
         segmentFiles.push(task.outputPath);
         continue;

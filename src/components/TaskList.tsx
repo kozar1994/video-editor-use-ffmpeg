@@ -5,10 +5,12 @@ interface TaskListProps {
   tasks: Task[];
   selectedTaskId: string | null;
   setSelectedTaskId: (id: string | null) => void;
-  setTasks: (tasks: Task[]) => void;
+  setTasks: (tasks: Task[] | ((prev: Task[]) => Task[])) => void;
   handleLoadTaskFilters: (task: Task) => void;
   processTask: (taskId: string) => void;
   onAddTask: () => void;
+  onEditTask: (task: Task) => void;
+  mergeTasks: boolean;
 }
 
 const TaskList: React.FC<TaskListProps> = ({
@@ -18,8 +20,16 @@ const TaskList: React.FC<TaskListProps> = ({
   setTasks,
   handleLoadTaskFilters,
   processTask,
-  onAddTask
+  onAddTask,
+  onEditTask,
+  mergeTasks,
 }) => {
+  const handleOrderChange = (taskId: string, newOrder: number) => {
+    setTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, mergeOrder: newOrder } : t))
+    );
+  };
+
   return (
     <div className="bg-white rounded-lg shadow p-6">
       <div className="flex justify-between items-center mb-4">
@@ -34,7 +44,8 @@ const TaskList: React.FC<TaskListProps> = ({
 
       {tasks.length === 0 ? (
         <div className="text-gray-500 text-sm">
-          No tasks yet. Click "Add Task" to create segments with different parameters.
+          No tasks yet. Click "Add Task" to create segments with different
+          parameters.
         </div>
       ) : (
         <div className="space-y-4 max-h-[60vh] overflow-y-auto">
@@ -50,12 +61,18 @@ const TaskList: React.FC<TaskListProps> = ({
                       onChange={() => setSelectedTaskId(task.id)}
                       className="w-4 h-4"
                     />
-                    <span className="font-semibold">Task {task.id.slice(-8)}</span>
-                    {task.status === 'completed' && (
-                      <span className="ml-2 text-sm text-green-600">✓ Done</span>
+                    <span className="font-semibold">
+                      Task {task.id.slice(-8)}
+                    </span>
+                    {task.status === "completed" && (
+                      <span className="ml-2 text-sm text-green-600">
+                        ✓ Done
+                      </span>
                     )}
-                    {task.status === 'processing' && (
-                      <span className="ml-2 text-sm text-blue-600">⏳ Processing</span>
+                    {task.status === "processing" && (
+                      <span className="ml-2 text-sm text-blue-600">
+                        ⏳ Processing
+                      </span>
                     )}
                   </div>
                   <div className="text-sm text-gray-600">
@@ -65,29 +82,61 @@ const TaskList: React.FC<TaskListProps> = ({
                     <strong>Quality:</strong> {task.quality}
                   </div>
                 </div>
-                <button
-                  onClick={() => setTasks(tasks.filter((t) => t.id !== task.id))}
-                  className="ml-2 text-red-600 hover:text-red-700"
-                >
-                  ✕
-                </button>
+                <div className="flex flex-col items-end gap-2">
+                  <button
+                    onClick={() =>
+                      setTasks(tasks.filter((t) => t.id !== task.id))
+                    }
+                    className="text-red-600 hover:text-red-700 p-1"
+                    title="Delete task"
+                  >
+                    ✕
+                  </button>
+                  {mergeTasks && (
+                    <div className="flex items-center gap-2 bg-blue-50 px-2 py-1 rounded border border-blue-100">
+                      <span className="text-[10px] uppercase font-bold text-blue-600">
+                        Order
+                      </span>
+                      <input
+                        type="number"
+                        min="1"
+                        max={tasks.length}
+                        value={task.mergeOrder}
+                        onChange={(e) =>
+                          handleOrderChange(
+                            task.id,
+                            parseInt(e.target.value) || 1
+                          )
+                        }
+                        className="w-10 h-7 text-center text-sm font-bold border rounded bg-white text-blue-700"
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
 
               {selectedTaskId === task.id && (
                 <div className="mt-3 pt-3 border-t space-y-3">
-                  <h4 className="font-semibold text-sm mb-2">Parameters for this task:</h4>
+                  <h4 className="font-semibold text-sm mb-2">
+                    Parameters for this task:
+                  </h4>
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div>
-                      <strong>Crop 1:</strong> {task.filters.crop1.width}x{task.filters.crop1.height}
+                      <strong>Crop 1:</strong> {task.filters.crop1.width}x
+                      {task.filters.crop1.height}
                     </div>
                     <div>
-                      <strong>V360 FOV:</strong> {task.filters.v360.h_fov}°/{task.filters.v360.v_fov}°
+                      <strong>V360 FOV:</strong> {task.filters.v360.h_fov}°/
+                      {task.filters.v360.v_fov}°
                     </div>
                     <div>
-                      <strong>Lens K1/K2:</strong> {task.filters.lenscorrection.k1}/{task.filters.lenscorrection.k2}
+                      <strong>Lens K1/K2:</strong>{" "}
+                      {task.filters.lenscorrection.k1}/
+                      {task.filters.lenscorrection.k2}
                     </div>
                     <div>
-                      <strong>Crop 2:</strong> {task.filters.crop2.width}x{task.filters.crop2.height}
+                      <strong>Crop 2:</strong> {task.filters.crop2.width}x
+                      {task.filters.crop2.height}
                     </div>
                     <div>
                       <strong>Yaw:</strong> {task.filters.v360.yaw}°
@@ -107,11 +156,19 @@ const TaskList: React.FC<TaskListProps> = ({
                       Load Filters
                     </button>
                     <button
+                      onClick={() => onEditTask(task)}
+                      className="flex-1 bg-gray-600 text-white px-3 py-2 rounded text-sm hover:bg-gray-700"
+                    >
+                      Edit Info
+                    </button>
+                    <button
                       onClick={() => processTask(task.id)}
-                      disabled={task.status !== 'pending'}
+                      disabled={task.status !== "pending"}
                       className="flex-1 bg-green-600 text-white px-3 py-2 rounded text-sm disabled:bg-gray-400 hover:bg-green-700"
                     >
-                      {task.status === 'processing' ? 'Processing...' : 'Process'}
+                      {task.status === "processing"
+                        ? "Processing..."
+                        : "Process"}
                     </button>
                   </div>
                 </div>

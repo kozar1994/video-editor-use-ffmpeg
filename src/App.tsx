@@ -135,7 +135,9 @@ function App() {
     if (editingTask) {
       setTasks(
         tasks.map((t) =>
-          t.id === editingTask.id ? { ...t, ...tempTaskData } : t
+          t.id === editingTask.id
+            ? { ...t, ...tempTaskData, status: "pending" }
+            : t
         )
       );
     } else {
@@ -146,6 +148,7 @@ function App() {
         filters: tempTaskData.filters || { ...filters },
         quality: tempTaskData.quality || "medium",
         status: "pending",
+        mergeOrder: tasks.length + 1,
       };
       setTasks([...tasks, newTask]);
     }
@@ -350,12 +353,17 @@ function App() {
       if (mergeTasks && updatedTasks.length > 1) {
         setExportStatus("Gluing all processed segments into final video...");
 
+        // Sort tasks based on user-defined mergeOrder
+        const sortedTasks = [...updatedTasks].sort(
+          (a, b) => a.mergeOrder - b.mergeOrder
+        );
+
         const resp = await fetch("http://localhost:3001/process-tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             videoPath,
-            tasks: updatedTasks,
+            tasks: sortedTasks,
             glueOnly: true,
           }),
         });
@@ -529,6 +537,8 @@ function App() {
               handleLoadTaskFilters={handleLoadTaskFilters}
               processTask={processTask}
               onAddTask={() => handleOpenTaskModal()}
+              onEditTask={handleOpenTaskModal}
+              mergeTasks={mergeTasks}
             />
           </div>
         </div>

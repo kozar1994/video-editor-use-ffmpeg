@@ -11,11 +11,12 @@ export interface FilterParams {
 }
 
 export interface Task {
-  id: string
-  startTime: string
-  endTime: string
-  filters: FilterParams
-  quality: 'fast' | 'medium' | 'high'
-  status: 'pending' | 'processing' | 'completed'
-  outputPath?: string
+  id: string;
+  startTime: string;
+  endTime: string;
+  filters: FilterParams;
+  quality: "fast" | "medium" | "high";
+  status: "pending" | "processing" | "completed";
+  outputPath?: string;
+  mergeOrder: number;
 }

@@ -1,73 +1,50 @@
-# React + TypeScript + Vite
+# Video Filter Editor
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A modern, web-based video editor that allows you to upload videos, apply complex FFmpeg filters, and export high-quality segments. This tool provides a real-time preview of your filters before processing.
 
-Currently, two official plugins are available:
+## Prerequisites
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Node.js**: Ensure you have Node.js installed.
+- **FFmpeg**: You should already have **FFmpeg version 6.1.1** installed on your computer and available in your system's PATH. This tool relies on FFmpeg for processing and FFplay for real-time previews.
 
-## React Compiler
+## Getting Started
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### 1. Install Dependencies
 
-## Expanding the ESLint configuration
+Open your terminal in the project root and run:
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### 2. Run the Application
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+To start both the Vite development server and the Node.js backend, run:
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run start
 ```
+
+The application will be available at `http://localhost:5173` (or the port shown in your terminal).
+
+## How to Use
+
+1. **Upload Video**: Select a video file from your computer. You'll see an "Uploading..." spinner while the file is sent to the server.
+2. **Preview**: Adjust filter parameters and use the **Preview** button to watch the results in real-time.
+3. **Add Tasks**: Once you're happy with a filter setting and a time range, click **+ Add Task** to save it to your export queue.
+4. **Export**: 
+   - Click **Start Export** to process all tasks sequentially.
+   - Enabling **Combine all tasks into one video** will glue all your processed segments together into a single final video after they are individualy finished.
+
+## File Storage & Cleanup
+
+- **Storage Location**: All processed video segments and the final merged video are stored in the `server/outputs` directory.
+- **Manual Cleanup**:
+  - **In-App**: Click the **Clear Storage** button at the top of the application to permanently delete all uploaded videos and exported files from the server.
+  - **Manually**: You can also manually delete files from the `uploads/` and `server/outputs/` directories on your computer.
+
+## Technologies Used
+
+- **Frontend**: React, TypeScript, Vite, TailwindCSS
+- **Backend**: Node.js, Express, Socket.io
+- **Video Engine**: FFmpeg / FFplay

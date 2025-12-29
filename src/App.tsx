@@ -104,6 +104,17 @@ function App() {
     });
   };
 
+  const handleVideoTimeUpdate = (seconds: number) => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    const formatted = `${String(h).padStart(2, "0")}:${String(m).padStart(
+      2,
+      "0"
+    )}:${String(s).padStart(2, "0")}`;
+    setSeekTime(formatted);
+  };
+
   const handleOpenTaskModal = (task?: Task) => {
     if (task) {
       setEditingTask(task);
@@ -497,6 +508,7 @@ function App() {
               videoUrl={videoUrl}
               onFileChange={onFileChange}
               isUploading={isUploading}
+              onTimeUpdate={handleVideoTimeUpdate}
             />
 
             <PreviewControls

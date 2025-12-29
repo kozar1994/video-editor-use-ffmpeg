@@ -4,12 +4,14 @@ interface VideoSelectorProps {
   videoUrl: string | null;
   onFileChange: (e: ChangeEvent<HTMLInputElement>) => void;
   isUploading: boolean;
+  onTimeUpdate?: (time: number) => void;
 }
 
 const VideoSelector: React.FC<VideoSelectorProps> = ({
   videoUrl,
   onFileChange,
   isUploading,
+  onTimeUpdate,
 }) => {
   return (
     <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100 transition-all hover:shadow-xl">
@@ -54,7 +56,12 @@ const VideoSelector: React.FC<VideoSelectorProps> = ({
       {videoUrl && !isUploading && (
         <div className="animate-in fade-in zoom-in-95 duration-500 mt-2">
           <div className="relative rounded-2xl overflow-hidden shadow-inner bg-black ring-1 ring-gray-200">
-            <video src={videoUrl} controls className="w-full aspect-video" />
+            <video
+              src={videoUrl}
+              controls
+              className="w-full aspect-video"
+              onTimeUpdate={(e) => onTimeUpdate?.(e.currentTarget.currentTime)}
+            />
           </div>
         </div>
       )}

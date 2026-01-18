@@ -18,8 +18,11 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
   stopPreview
 }) => {
   return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <h2 className="text-xl font-semibold mb-4">Preview Controls (ffplay)</h2>
+    <div className="bg-white rounded-xl shadow-sm p-6">
+      <h2 className="text-xl font-bold mb-4 text-slate-900 flex items-center gap-2">
+        <span className="w-1.5 h-6 bg-green-500 rounded-full"></span>
+        Preview Controls
+      </h2>
       <div className="space-y-4">
         <div className="flex gap-2">
           <button
@@ -38,7 +41,9 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
           </button>
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1">Seek Time (HH:MM:SS)</label>
+          <label className="block text-sm font-semibold text-slate-700 mb-1">
+            Seek Time (HH:MM:SS)
+          </label>
           <input
             type="text"
             value={seekTime}
@@ -50,7 +55,9 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
         {previewRunning && (
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
-            <span className="text-sm text-green-600">Preview Running (ffplay window open)</span>
+            <span className="text-sm text-green-600">
+              Preview Running (ffplay window open)
+            </span>
           </div>
         )}
       </div>

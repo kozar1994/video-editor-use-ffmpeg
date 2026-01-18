@@ -43,7 +43,7 @@ const TaskList: React.FC<TaskListProps> = ({
       </div>
 
       {tasks.length === 0 ? (
-        <div className="text-gray-500 text-sm">
+        <div className="text-slate-500 text-sm">
           No tasks yet. Click "Add Task" to create segments with different
           parameters.
         </div>
@@ -75,10 +75,10 @@ const TaskList: React.FC<TaskListProps> = ({
                       </span>
                     )}
                   </div>
-                  <div className="text-sm text-gray-600">
+                  <div className="text-sm text-slate-600">
                     <strong>Time:</strong> {task.startTime} - {task.endTime}
                   </div>
-                  <div className="text-sm text-gray-600">
+                  <div className="text-sm text-slate-600">
                     <strong>Quality:</strong> {task.quality}
                   </div>
                 </div>

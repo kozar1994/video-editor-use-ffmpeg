@@ -1,4 +1,5 @@
 import { spawn } from 'child_process';
+import { join } from "path";
 
 let ffplayProcess = null;
 
@@ -7,20 +8,29 @@ export function startPreview(videoPath, filters, seekTime) {
 
   const args = [];
   if (seekTime) {
-    args.push('-ss', seekTime);
+    args.push("-ss", seekTime);
   }
-  args.push('-i', videoPath);
+  const fullVideoPath = videoPath.startsWith("/")
+    ? videoPath
+    : join(process.cwd(), videoPath);
+  args.push("-i", fullVideoPath);
+  args.push("-sws_flags", "lanczos+accurate_rnd");
+  args.push("-autoexit");
   if (filters) {
-    args.push('-vf', filters);
+    args.push("-vf", filters);
   }
 
-  ffplayProcess = spawn('ffplay', args, { stdio: ['ignore', 'ignore', 'inherit'] });
-
-  ffplayProcess.on('error', (err) => {
-    console.error('FFplay error:', err);
+  console.log("Spawning ffplay with args:", args);
+  ffplayProcess = spawn("ffplay", args, {
+    stdio: ["ignore", "ignore", "inherit"],
   });
 
-  ffplayProcess.on('exit', () => {
+  ffplayProcess.on("error", (err) => {
+    console.error("FFplay failed to spawn:", err);
+  });
+
+  ffplayProcess.on("exit", (code, signal) => {
+    console.log(`FFplay process exited with code ${code} and signal ${signal}`);
     ffplayProcess = null;
   });
 }

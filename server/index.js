@@ -3,7 +3,7 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import { fileURLToPath } from 'url';
-import { dirname, join } from "path";
+import { dirname, join, basename } from "path";
 import { startPreview, stopPreview, isPreviewRunning } from "./ffplay.js";
 import multer from "multer";
 import cors from "cors";
@@ -14,7 +14,11 @@ import {
   readdirSync,
   unlinkSync,
   lstatSync,
+  createWriteStream,
 } from "fs";
+import https from "https";
+import http from "http";
+import { finished } from "stream/promises";
 import { exec, execSync } from "child_process";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -41,21 +45,37 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Serve uploaded files statically
+// Serve uploaded files statically
+app.use("/uploads", express.static(join(__dirname, "../uploads")));
+
 const io = new SocketIOServer(server, {
   cors: { origin: "*" },
 });
 
-const PORT = 3001;
+const PORT = 3000;
 
 // Ensure uploads directory exists
-const uploadsDir = "uploads/";
+const uploadsDir = join(__dirname, "../uploads");
 if (!existsSync(uploadsDir)) {
   mkdirSync(uploadsDir, { recursive: true });
-  console.log("Created uploads directory");
+  console.log("Created uploads directory at:", uploadsDir);
+} else {
+  console.log("Using uploads directory at:", uploadsDir);
 }
 
-// Configure multer for file uploads
-const upload = multer({ dest: uploadsDir });
+// Configure multer with disk storage to preserve extensions
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const timestamp = Date.now();
+    const ext = file.originalname.split(".").pop();
+    cb(null, `upload_${timestamp}.${ext}`);
+  },
+});
+const upload = multer({ storage });
 
 // Store current video and filters
 let currentVideoPath = null;
@@ -65,8 +85,13 @@ let currentSeekTime = "00:00:00";
 // Get video duration using ffprobe
 function getVideoDuration(videoPath) {
   try {
+    const fullPath = videoPath.startsWith("/")
+      ? videoPath
+      : videoPath.startsWith("uploads/")
+      ? join(__dirname, "../", videoPath)
+      : join(process.cwd(), videoPath);
     const output = execSync(
-      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${videoPath}"`,
+      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${fullPath}"`,
       { encoding: "utf8" }
     );
     const duration = parseFloat(output.trim());
@@ -79,7 +104,7 @@ function getVideoDuration(videoPath) {
 
 // Format seconds to HH:MM:SS
 function formatDuration(seconds) {
-  if (!seconds) return "00:00:00";
+  if (!seconds || isNaN(seconds)) return "00:00:00";
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = Math.floor(seconds % 60);
@@ -90,51 +115,72 @@ function formatDuration(seconds) {
 
 // Build FFmpeg filter string from params
 function buildFilterString(filters) {
+  if (!filters) return "";
   const parts = [];
 
   if (filters.crop1) {
     parts.push(
-      `crop=${filters.crop1.width}:${filters.crop1.height}:${filters.crop1.x}:${filters.crop1.y}`
+      `crop=${filters.crop1.width || "iw"}:${filters.crop1.height || "ih"}:${
+        filters.crop1.x || 0
+      }:${filters.crop1.y || 0}`
     );
   }
 
   if (filters.v360) {
-    parts.push(
-      `v360=input=${filters.v360.input}:output=${filters.v360.output}:` +
-        `ih_fov=${filters.v360.ih_fov}:iv_fov=${filters.v360.iv_fov}:` +
-        `h_fov=${filters.v360.h_fov}:v_fov=${filters.v360.v_fov}:` +
-        `yaw=${filters.v360.yaw}:pitch=${filters.v360.pitch}:roll=${filters.v360.roll}`
-    );
+    const f = filters.v360;
+    let v360Str =
+      `v360=input=${f.input || "equirect"}:output=${
+        f.output || "rectilinear"
+      }:` +
+      `ih_fov=${f.ih_fov ?? 180}:iv_fov=${f.iv_fov ?? 180}:` +
+      `h_fov=${f.h_fov ?? 98}:v_fov=${f.v_fov ?? 98}:` +
+      `yaw=${f.yaw ?? 0}:pitch=${f.pitch ?? 0}:roll=${f.roll ?? 0}:` +
+      `interp=spline16`;
+
+    if (f.w && f.h) {
+      v360Str += `:w=${f.w}:h=${f.h}`;
+    }
+    parts.push(v360Str);
   }
 
   if (filters.lenscorrection) {
     parts.push(
-      `lenscorrection=k1=${filters.lenscorrection.k1}:k2=${filters.lenscorrection.k2}`
+      `lenscorrection=k1=${filters.lenscorrection.k1 ?? 0}:k2=${
+        filters.lenscorrection.k2 ?? 0
+      }`
     );
   }
 
   if (filters.crop2) {
     parts.push(
-      `crop=${filters.crop2.width}:${filters.crop2.height}:${filters.crop2.x}:${filters.crop2.y}`
+      `crop=${filters.crop2.width || "iw"}:${filters.crop2.height || "ih"}:${
+        filters.crop2.x || 0
+      }:${filters.crop2.y || 0}`
     );
   }
 
   if (filters.scale) {
     parts.push(
-      `scale=${filters.scale.width}:${filters.scale.height}:flags=${filters.scale.flags}`
+      `scale=${filters.scale.width || "iw"}:${
+        filters.scale.height || "ih"
+      }:flags=${filters.scale.flags || "lanczos"}`
     );
   }
 
   if (filters.hqdn3d) {
+    const h = filters.hqdn3d;
     parts.push(
-      `hqdn3d=${filters.hqdn3d.spatial_luma}:${filters.hqdn3d.spatial_chroma}:` +
-        `${filters.hqdn3d.temporal_luma}:${filters.hqdn3d.temporal_chroma}`
+      `hqdn3d=${h.spatial_luma ?? 0}:${h.spatial_chroma ?? 0}:` +
+        `${h.temporal_luma ?? 0}:${h.temporal_chroma ?? 0}`
     );
   }
 
   if (filters.unsharp) {
+    const u = filters.unsharp;
     parts.push(
-      `unsharp=${filters.unsharp.luma_msize_x}:${filters.unsharp.luma_msize_y}:${filters.unsharp.luma_amount}`
+      `unsharp=${u.luma_msize_x ?? 3}:${u.luma_msize_y ?? 3}:${
+        u.luma_amount ?? 0
+      }`
     );
   }
 
@@ -146,6 +192,9 @@ function buildFilterString(filters) {
     parts.push(`setsar=${filters.setsar}`);
   }
 
+  // Final debanding pass to remove macroblocks and "square pixels"
+  parts.push("deband=1thr=0.02:2thr=0.02:3thr=0.02:blur=1");
+
   return parts.filter(Boolean).join(",");
 }
 
@@ -155,7 +204,7 @@ function buildFilterString(filters) {
 app.post("/clear-files", (req, res) => {
   console.log("--- Clear Storage Request Received ---");
   const outputsDir = join(__dirname, "outputs");
-  const uploadsPath = join(process.cwd(), uploadsDir);
+  const uploadsPath = uploadsDir;
   const dirs = [uploadsPath, outputsDir];
   let deletedCount = 0;
   let errors = [];
@@ -205,6 +254,157 @@ app.post("/clear-files", (req, res) => {
   }
 });
 
+// List all videos in the uploads directory
+app.get("/list-videos", (req, res) => {
+  try {
+    const files = readdirSync(uploadsDir);
+    const videos = files
+      .map((file) => {
+        try {
+          const stats = lstatSync(join(uploadsDir, file));
+          return {
+            name: file,
+            path: `uploads/${file}`,
+            size: stats.size,
+            mtime: stats.mtime,
+          };
+        } catch (e) {
+          console.warn(`Skipping file ${file}:`, e.message);
+          return null;
+        }
+      })
+      .filter((f) => f && !f.name.startsWith(".")); // Ignore hidden files
+
+    res.json({ success: true, videos });
+  } catch (error) {
+    console.error("Error listing videos:", error);
+    res.status(500).json({ error: "Failed to list videos" });
+  }
+});
+
+// Delete a specific video file
+app.post("/delete-video", (req, res) => {
+  const { name } = req.body;
+  if (!name) {
+    return res.status(400).json({ error: "No video name provided" });
+  }
+
+  // Basic security: only allow deleting files in the uploadsDir
+  const safeName = name.split("/").pop().split("\\").pop();
+  const filePath = join(uploadsDir, safeName);
+
+  try {
+    if (existsSync(filePath)) {
+      unlinkSync(filePath);
+      console.log(`Manually deleted video: ${safeName}`);
+      res.json({ success: true, message: `Video ${safeName} deleted` });
+    } else {
+      res.status(404).json({ error: "Video file not found" });
+    }
+  } catch (error) {
+    console.error("Error deleting video:", error);
+    res.status(500).json({ error: "Failed to delete video" });
+  }
+});
+
+// Download video from URL using streams
+app.post("/download-video", async (req, res) => {
+  const { url } = req.body;
+  if (!url) {
+    return res.status(400).json({ error: "No URL provided" });
+  }
+
+  console.log("Downloading video from URL:", url);
+  const timestamp = Date.now();
+  const filename = `downloaded_${timestamp}.mp4`;
+  const filePath = join(uploadsDir, filename);
+
+  try {
+    const isHLS = url.toLowerCase().includes(".m3u8");
+
+    if (isHLS) {
+      console.log("HLS/m3u8 detected, using ffmpeg for download/muxing...");
+      const ffmpegCmd = `ffmpeg -i "${url}" -c copy -bsf:a aac_adtstoasc -movflags +faststart -y "${filePath}"`;
+      console.log("Executing ffmpeg download command:", ffmpegCmd);
+
+      await new Promise((resolve, reject) => {
+        exec(ffmpegCmd, (error) => {
+          if (error) {
+            reject(new Error(`FFmpeg HLS download failed: ${error.message}`));
+          } else {
+            resolve();
+          }
+        });
+      });
+    } else {
+      // Direct file download using streams
+      const file = createWriteStream(filePath);
+      const protocol = url.startsWith("https") ? https : http;
+
+      await new Promise((resolve, reject) => {
+        protocol
+          .get(url, (response) => {
+            if (response.statusCode === 301 || response.statusCode === 302) {
+              // Handle one level of redirect
+              protocol
+                .get(response.headers.location, (redirectResponse) => {
+                  if (redirectResponse.statusCode !== 200) {
+                    reject(
+                      new Error(
+                        `Failed to download: ${redirectResponse.statusCode}`
+                      )
+                    );
+                    return;
+                  }
+                  redirectResponse.pipe(file);
+                  file.on("finish", () => {
+                    file.close();
+                    resolve();
+                  });
+                })
+                .on("error", reject);
+              return;
+            }
+
+            if (response.statusCode !== 200) {
+              reject(new Error(`Failed to download: ${response.statusCode}`));
+              return;
+            }
+
+            response.pipe(file);
+            file.on("finish", () => {
+              file.close();
+              resolve();
+            });
+          })
+          .on("error", (err) => {
+            reject(err);
+          });
+      });
+    }
+
+    // Get video duration
+    const duration = getVideoDuration(filePath);
+    const formattedDuration = formatDuration(duration);
+
+    res.json({
+      success: true,
+      path: `uploads/${basename(filePath)}`,
+      name: filename,
+      duration,
+      formattedDuration,
+    });
+  } catch (error) {
+    console.error("Download error:", error);
+    if (existsSync(filePath)) unlinkSync(filePath);
+    res.status(500).json({
+      success: false,
+      error: "Download failed",
+      message: error.message,
+    });
+  }
+});
+
 app.get("/health", (_req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
 });
@@ -239,7 +439,7 @@ app.post("/upload", upload.single("video"), (req, res) => {
   console.log("Video duration:", formattedDuration);
 
   res.json({
-    path: filePath,
+    path: `uploads/${basename(filePath)}`,
     duration: duration,
     formattedDuration,
   });
@@ -277,8 +477,8 @@ app.post("/process-task", (req, res) => {
   const filterString = buildFilterString(task.filters);
   const filterArg = filterString ? `-vf "${filterString}"` : "";
 
-  // FFmpeg command for the segment
-  const cmd = `ffmpeg -ss ${task.startTime} -to ${task.endTime} -i "${videoPath}" ${filterArg} -preset medium -crf 23 -y "${outputPath}"`;
+  // FFmpeg command for the segment - ultra high quality settings
+  const cmd = `ffmpeg -ss ${task.startTime} -to ${task.endTime} -i "${videoPath}" ${filterArg} -c:v libx264 -preset slow -crf 16 -tune film -pix_fmt yuv420p -y "${outputPath}"`;
 
   console.log("FFmpeg command:", cmd);
 
@@ -333,7 +533,7 @@ app.post("/process-tasks", (req, res) => {
       const segmentFile = `segment_${task.id}.mp4`;
       const segmentPath = join(outputDir, segmentFile);
 
-      const cmd = `ffmpeg -ss ${task.startTime} -to ${task.endTime} -i "${videoPath}" ${filterArg} -preset medium -crf 23 -y "${segmentPath}"`;
+      const cmd = `ffmpeg -ss ${task.startTime} -to ${task.endTime} -i "${videoPath}" ${filterArg} -c:v libx264 -preset slow -crf 16 -tune film -pix_fmt yuv420p -y "${segmentPath}"`;
 
       console.log("Segment FFmpeg command:", cmd);
       execSync(cmd, { stdio: "inherit" });
